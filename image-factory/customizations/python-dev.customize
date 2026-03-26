@@ -1,0 +1,5 @@
+# Standard python3 development setup
+
+install python3-full,python3-dev
+install python3-pip,python3-venv
+install pipx

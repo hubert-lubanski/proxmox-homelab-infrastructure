@@ -1,0 +1,68 @@
+#cloud-config
+# Change password for already preset developer and root
+chpasswd:
+  expire: false
+  users:
+    - {name: root, password: developer, type: text}
+    - {name: developer, password: developer, type: text}
+
+# Setup sudo for the developer user, just in case
+users:
+  - name: developer
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+package_update: false
+package_upgrade: false
+disable_root: true
+resize_rootfs: false
+locale: C.UTF-8
+
+# Execute at first boot only
+runcmd:
+  - |
+    #!/bin/bash
+    set -euo pipefail
+    PERSISTENT_DISK="/dev/sdb"
+
+    # 1. Check if the disk is already Btrfs. If not, initialize it.
+    if ! blkid -p -u filesystem "$PERSISTENT_DISK" | grep -q "btrfs"; then
+        echo "INFO: Initializing new Btrfs persistent disk..."
+        # Format the whole raw block device (standard practice for Btrfs disks)
+        mkfs.btrfs -L workspace "$PERSISTENT_DISK"
+
+        # Temporarily mount the root pool to create the subvolume structure
+        mkdir -p /mnt/btrfs_temp
+        mount -t btrfs "$PERSISTENT_DISK" /mnt/btrfs_temp
+
+        # Create isolated subvolumes
+        btrfs subvolume create /mnt/btrfs_temp/@home_developer
+        btrfs subvolume create /mnt/btrfs_temp/@docker_data
+
+        # Inject the skeleton profile into the new home BEFORE unmounting
+        rsync -av /home/developer/ /mnt/btrfs_temp/@home_developer/
+        chown -R developer:developer /mnt/btrfs_temp/@home_developer
+
+        # Unmount and destroy the temporary access point
+        umount /mnt/btrfs_temp
+        rmdir /mnt/btrfs_temp
+    else
+        echo "INFO: Existing Btrfs persistent disk detected. Skipping format."
+    fi
+
+    # 2. Mount subvolumes directly to targets
+    # CRITICAL: 'nodatacow' disables guest-level CoW,
+    # preventing ZFS write-amplification death
+    mount -t btrfs -o subvol=@home_developer,nodatacow,noatime "$PERSISTENT_DISK" /home/developer
+    mount -t btrfs -o subvol=@docker_data,nodatacow,noatime "$PERSISTENT_DISK" /var/lib/docker
+
+    # 3. Persist the subvolume mounts across VM reboots
+    if ! grep -q "$PERSISTENT_DISK /home/developer" /etc/fstab; then
+        echo "$PERSISTENT_DISK /home/developer btrfs subvol=@home_developer,nodatacow,noatime 0 0" >> /etc/fstab
+        echo "$PERSISTENT_DISK /var/lib/docker btrfs subvol=@docker_data,nodatacow,noatime 0 0" >> /etc/fstab
+    fi
+
+    # 4. Restart Docker to initialize within the new subvolume
+    systemctl restart docker
+
+    # 5. Disable cloud-init on subsequent boots
+    touch /etc/cloud/cloud-init.disabled

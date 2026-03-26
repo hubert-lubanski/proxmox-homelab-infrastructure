@@ -1,0 +1,11 @@
+# !!! THIS CUSTOMIZATION SHOULD BE DONE AS THE LAST ONE !!! 
+
+run-command apt-get clean -y
+run-command apt-get autoclean -y
+run-command apt autopurge -y
+
+delete /var/lib/apt/lists/*
+delete /tmp/*
+delete /var/tmp/*
+
+run-command truncate -s 0 /var/log/*log

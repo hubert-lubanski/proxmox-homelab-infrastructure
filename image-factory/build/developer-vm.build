@@ -1,0 +1,145 @@
+#!/bin/bash
+
+IMAGE_PATH="$1"
+
+based=$(basename "${0%.*}")
+
+verbose="false"
+interactive="false"
+download="false"
+output="developer-vm.image"
+
+usage() {
+    echo "Usage: $0 <base-cloud-image-file>"
+    echo "Options:"
+    echo " -v        - Increases verbosity."
+    echo " -i        - Execute interactively."
+    echo " -d        - Treat argument as an URL to download image from (wget)."
+    echo " -o <file> - Place the output image in <file>."
+    echo " -h        - Display this message."
+}
+
+while getopts "vido:" opt; do
+case ${opt} in
+    v) verbose="true" ;;
+    i) interactive="true" ;;
+    d) download="true" ;;
+    o) output="$OPTARG" ;;
+    *) usage
+       exit 1
+       ;;
+esac
+done
+
+shift $((OPTIND - 1))
+
+temporary() {
+    echo "/tmp/${based}-$(date +%H:%M:%S)"
+    return 0
+}
+
+log() {
+    if [[ "$verbose" == "true" ]]; then
+        echo "[Info]: $1" >&2
+    fi
+    return 0
+}
+
+error() {
+    echo "[Error]: $1"
+    exit 1
+}
+
+uerror() {
+    echo "[Error]: $1"
+    usage
+    exit 1
+}
+
+if [[ -z "${IMAGE_PATH}" ]]; then
+    uerror "Image path not provided"
+fi
+
+if [[ "$download" == "false" ]] && [[ ! -f "${IMAGE_PATH}" ]]; then
+	uerror "Image not found locally."
+fi
+
+if [[ "$interactive" == "true" ]]; then
+    readarray -d '' images < <(find /tmp -name developer-vm*.qcow2 -print0)
+    if [[ -n "$images" ]]; then
+        echo "There are some images present at /tmp."
+        echo "Would you like to use one of them?"
+        select img in "${images[@]}" "No"; do
+            if [[ -f "$img" ]]; then
+                IMAGE_PATH="$img"
+                DOWNLOAD="no"
+            elif [[ "$img" != "No" ]]; then
+                echo "Wrong choice. Continuing with IMAGE_PATH=${IMAGE_PATH}"
+            fi
+            break
+        done
+    fi
+fi
+
+shift
+
+CUSTOMIZE_DIR="/templates/customizations"
+LOADER="${CUSTOMIZE_DIR}/load-customize"
+CUSTOMIZATIONS=(
+	apt-proxy base-os
+	dev-tools net-tools
+	cpp-dev python-dev haskell-dev
+	docker code-server
+	purge-bloat
+	zero-drift
+	template-cleanup
+)
+
+commands=$(${LOADER} "${CUSTOMIZATIONS[@]/*/${CUSTOMIZE_DIR}\/&.customize}")
+[[ "$?" -eq "0" ]] || exit 1;
+
+log "Loading sucessfull!"
+#log "Loaded customizations: ${CUSTOMIZATIONS[*]}"
+
+if [[ "$download" == "yes" ]]; then
+	log "Preparing the download of the image file..."
+	TMP_IMAGE_PATH="$(temporary).image"
+	wget -q --show-progress --progress=bar:force -O "${TMP_IMAGE_PATH}" "${IMAGE_PATH}"
+
+	if [[ "$?" -ne "0" ]]; then
+        rm "${TMP_IMAGE_PATH}"
+        error "There was an error downloading your image."
+    fi
+
+    log "Resizing image..."
+    qemu-img create -f qcow2 -o preallocation=metadata "$output" 10G
+
+    # TODO: Automate the disk selection in the future
+    #       - /dev/sda1 works for debian-cloud-generic
+    virt-resize --expand /dev/sda1 "${TMP_IMAGE_PATH}" "$output"
+    rm "${TMP_IMAGE_PATH}"
+	log "Image available at $output."
+fi
+
+# Form now on the $output variable contains the path to the image file
+
+log "The image will be customized with the following additional flags: ${*}"
+if [[ "$interactive" == "true" ]]; then
+    echo "----------------------------"
+    echo "Would you like to continue?"
+    select yn in "Yes" "No"; do
+    	case $yn in
+    		Yes ) break  ;;
+    		No  ) exit 1 ;;
+    	esac
+    done
+    echo "----------------------------"
+fi
+log "Customizing image..."
+
+export LIBGUESTFS_BACKEND=direct
+virt-customize -a "$output" --commands-from-file <( echo "$commands" ) "${@}"
+
+log "Freshly built image available at $output."
+
+

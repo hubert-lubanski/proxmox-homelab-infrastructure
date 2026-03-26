@@ -1,0 +1,14 @@
+# Basic VM system setup
+
+#> DEBIAN_SOURCES_FILE = /etc/apt/sources.list.d/debian.sources
+timezone Europe/Warsaw
+
+upload ${DEBIAN_SOURCES_FILE}:/etc/apt/sources.list.d/debian.sources
+
+update
+
+install qemu-guest-agent,btrfs-progs
+
+install ca-certificates,curl,gnupg,lsb-release
+install bash,bash-completion
+install sudo

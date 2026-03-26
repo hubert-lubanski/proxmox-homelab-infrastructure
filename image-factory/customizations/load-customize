@@ -1,0 +1,114 @@
+#!/bin/bash
+#
+# This program is used to inject environment variables into text files
+# based on custom '#>' headers found at the initial comment block of the file.
+#
+# The templated file is streamed to stdout for easy process substitution.
+
+set -eo pipefail
+
+# Require standard gettext-base utility for safe templating
+if ! command -v envsubst >/dev/null 2>&1; then
+    echo "CRITICAL: 'envsubst' binary is missing. Run: apt-get install gettext-base" >&2
+    exit 1
+fi
+
+if [[ $# -eq 0 ]]; then
+    echo "CRITICAL: No files specified for loading." >&2
+    exit 1
+fi
+
+usage() {
+    echo "Usage: $0 [files]"
+    exit 1
+}
+
+verbose="false"
+
+while getopts "vh" opt; do
+  case $opt in
+    v) verbose="true" ;;
+    *) usage ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+log() {
+    if [[ "$verbose" == "true" ]]; then
+        echo "[Info]: $1" >&2
+    fi
+}
+
+error() {
+    echo "[Error]: $1" >&2
+    exit 1
+}
+
+for TARGET_FILE in "$@"; do
+    if [[ ! -f "$TARGET_FILE" ]]; then
+        error "File not found: '$TARGET_FILE'"
+    fi
+
+    declare -A VAR_DEFAULTS=()
+    declare -a VAR_NAMES=()
+
+    # 1. Parse header block
+    while IFS= read -r line; do
+        # Stop at the first line that is not a comment
+        [[ ! "$line" =~ (^#|[[:space:]]*) ]] && break
+
+        # Match: #> VAR_NAME [= default_value]
+        if [[ "$line" =~ ^#\>[[:space:]]*([a-zA-Z_][a-zA-Z0-9_]*)([[:space:]]*=[[:space:]]*(.*))?$ ]]; then
+            var_name="${BASH_REMATCH[1]}"
+            has_assignment="${BASH_REMATCH[2]}"
+            default_val="${BASH_REMATCH[3]}"
+
+            VAR_NAMES+=("$var_name")
+            if [[ -n "$has_assignment" ]]; then
+                VAR_DEFAULTS["$var_name"]="$default_val"
+            else
+                VAR_DEFAULTS["$var_name"]="__NO_DEFAULT__"
+            fi
+        fi
+    done < "$TARGET_FILE"
+
+    # 2. Validate environment and construct envsubst whitelist
+    ENVSUBST_FILTER=""
+    for var in "${VAR_NAMES[@]}"; do
+        set +u
+        is_set=false
+        [[ -n "${!var+x}" ]] && is_set=true
+        set -u
+
+        if [[ "$is_set" == false ]]; then
+            default_val="${VAR_DEFAULTS[$var]}"
+            if [[ "$default_val" == "__NO_DEFAULT__" ]]; then
+                error "Required variable '$var' missing for '$TARGET_FILE'."
+            fi
+            log "Variable $var set to its default value: ${default_val}"
+
+            # Export default value so envsubst can see it
+            export "$var"="$default_val"
+        fi
+
+        # Append to whitelist (e.g., '$VAR1,$VAR2,')
+        ENVSUBST_FILTER+="\$$var,"
+    done
+
+    # Remove trailing comma from filter
+    ENVSUBST_FILTER="${ENVSUBST_FILTER%,}"
+
+    # 3. Stream the output with safe substitution
+    if [[ -n "$ENVSUBST_FILTER" ]]; then
+        # Substitute only explicitly declared variables
+        grep -E -v "(^#|$)" "$TARGET_FILE" | envsubst "$ENVSUBST_FILTER"
+    else
+        # No variables declared, output raw file
+        grep -E -v "(^#|$)" "$TARGET_FILE"
+    fi
+
+    # Reset tracking arrays for the next file in the loop
+    log "File $TARGET_FILE processed sucessfully."
+    unset VAR_DEFAULTS VAR_NAMES
+done

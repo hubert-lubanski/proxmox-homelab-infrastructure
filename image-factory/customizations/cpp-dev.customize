@@ -1,0 +1,9 @@
+# Cmake build system for C/C++
+
+install build-essential,cmake,elfutils
+install gcc,g++,nasm,gfortran,clang
+install valgrind,gdb
+install libc-dev,automake
+install clangd,clang-format,llvm,lld,lldb
+install cppcheck,cpplint,ccache
+

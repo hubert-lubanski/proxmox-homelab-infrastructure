@@ -1,0 +1,9 @@
+# Default developer tools 
+
+install build-essential,binutils,patch
+install git,jq,yq,rsync
+install btop,sysstat
+install strace,lsof,file,tree
+install zip,unzip,tar,zstd
+install manpages-dev
+install parallel

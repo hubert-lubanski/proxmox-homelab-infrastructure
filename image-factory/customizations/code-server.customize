@@ -1,0 +1,36 @@
+# Coder code-server setup
+
+#> SYSTEM_EXTENSIONS = ms-azuretools.vscode-containers docker.docker Google.colab esbenp.prettier-vscode
+#> USER_EXTENSIONS = 
+
+# Other worth considering: saoudrizwan.claude-dev Continue.continue
+run-command curl -fsSL https://code-server.dev/install.sh | sh
+run-command id "developer" >/dev/null 2>&1 || useradd -m -s /bin/bash developer
+run-command groups developer | grep -wq "docker" || usermod -aG docker developer
+
+# Additional built-in extensions:
+run-command \
+for ext in ${SYSTEM_EXTENSIONS}; do\
+    code-server --extensions-dir /usr/lib/code-server/lib/vscode/extensions --install-extension $ext;\
+done
+
+# Additional user extensions:
+run-command \
+for i in ${USER_EXTENSIONS}; do\
+	sudo -u developer code-server --install-extension $i;\
+done
+
+mkdir /home/developer/.config/code-server
+delete /home/developer/.config/code-server/config.yaml
+touch /home/developer/.config/code-server/config.yaml
+append-line /home/developer/.config/code-server/config.yaml:bind-addr: 0.0.0.0:8080
+append-line /home/developer/.config/code-server/config.yaml:auth: password
+append-line /home/developer/.config/code-server/config.yaml:password: changeme
+append-line /home/developer/.config/code-server/config.yaml:cert: false
+
+delete /home/developer/.local/share/code-server
+delete /home/developer/.cache
+mkdir /home/developer/.cache
+
+run-command systemctl enable code-server@developer
+

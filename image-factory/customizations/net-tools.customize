@@ -1,0 +1,9 @@
+# Full diagnostic and connectivity testing suite
+
+install iputils-ping,iproute2
+install netcat-openbsd,socat
+install nmap
+install dnsutils
+install tcpdump
+install mtr-tiny,traceroute
+install curl,wget

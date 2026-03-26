@@ -1,0 +1,9 @@
+# Haskell GHC and Cabal with HLS
+
+install libgmp-dev,zlib1g-dev,libffi-dev
+install ghc,cabal-install
+
+install hlint,ghc-doc
+
+# run-command cabal update
+# run-command cabal install haskell-language-server

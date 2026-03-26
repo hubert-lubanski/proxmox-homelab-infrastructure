@@ -1,0 +1,14 @@
+# 1. Purge MTAs (Mail Servers)
+run-command apt-get purge -y exim4 exim4-base exim4-config exim4-daemon-light postfix
+
+# 2. Purge Legacy/Insecure Networking
+run-command apt-get purge -y rpcbind telnet ftp nfs-common ppp
+
+# 3. Purge Redundant Logging (systemd-journald is sufficient)
+run-command apt-get purge -y rsyslog
+
+# 4. Purge Unnecessary Hardware/Desktop Daemons (if present in image)
+run-command apt-get purge -y modemmanager wpasupplicant wireless-tools bluetooth alsa-utils
+
+# 5. Autoremove orphaned dependencies
+run-command apt-get autoremove -y --purge

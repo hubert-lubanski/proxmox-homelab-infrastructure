@@ -1,0 +1,4 @@
+# Internal Proxy setup
+
+#> PROXY_ADDRESS
+write /etc/apt/apt.conf.d/00aptproxy:Acquire::http { Proxy "${PROXY_ADDRESS}"; };

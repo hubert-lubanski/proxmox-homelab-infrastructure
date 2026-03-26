@@ -1,0 +1,16 @@
+# Stateless OS preparation
+# 1. Disable APT unattended upgrades. The OS must NEVER update itself in place.
+run-command systemctl disable apt-daily.timer apt-daily-upgrade.timer
+run-command systemctl mask apt-daily.service apt-daily-upgrade.service
+
+# 2. Force systemd-journald to volatile RAM storage (Prevents disk I/O drift)
+run-command sed -i 's/.*Storage=.*/Storage=volatile/' /etc/systemd/journald.conf
+run-command rm -rf /var/log/journal/*
+
+# 3. Mount /tmp and /var/tmp in RAM (tmpfs)
+run-command cp /usr/lib/systemd/system/tmp.mount /etc/systemd/system/tmp.mount
+run-command systemctl enable tmp.mount
+run-command echo "tmpfs /var/tmp tmpfs defaults,nosuid,nodev,noexec,mode=1777 0 0" >> /etc/fstab
+
+# 4. Disable dynamic MOTD (Message of the Day) cache generation
+run-command rm -f /etc/update-motd.d/*

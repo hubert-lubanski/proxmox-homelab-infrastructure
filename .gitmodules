@@ -1,3 +1,0 @@
-[submodule "templates"]
-	path = pve-image-factory
-	url = ../pve-image-factory.git
