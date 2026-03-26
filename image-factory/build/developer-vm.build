@@ -83,8 +83,8 @@ fi
 
 shift
 
-CUSTOMIZE_DIR="/templates/customizations"
-LOADER="${CUSTOMIZE_DIR}/load-customize"
+CUSTOMIZE_DIR="../customizations"
+LOADER="../bin/load-customize"
 CUSTOMIZATIONS=(
 	apt-proxy base-os
 	dev-tools net-tools
@@ -141,5 +141,3 @@ export LIBGUESTFS_BACKEND=direct
 virt-customize -a "$output" --commands-from-file <( echo "$commands" ) "${@}"
 
 log "Freshly built image available at $output."
-
-
