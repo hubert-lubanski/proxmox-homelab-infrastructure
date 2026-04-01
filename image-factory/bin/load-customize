@@ -23,11 +23,15 @@ usage() {
     exit 1
 }
 
-verbose="false"
+STRIP_LEVELS=("cat" "sed -e '/^#>/d'" "sed -e '/^#/d' -e '/^\s*$/d'")
 
-while getopts "vh" opt; do
+verbose="false"
+strip=2
+
+while getopts "vs:h" opt; do
   case $opt in
-    v) verbose="true" ;;
+    v) verbose="true"  ;;
+    s) strip="$OPTARG" ;;
     *) usage ;;
   esac
 done
@@ -99,13 +103,14 @@ for TARGET_FILE in "$@"; do
     # Remove trailing comma from filter
     ENVSUBST_FILTER="${ENVSUBST_FILTER%,}"
 
+    stripper="${STRIP_LEVELS[$strip]:-${STRIP_LEVELS[-1]}}"
     # 3. Stream the output with safe substitution
     if [[ -n "$ENVSUBST_FILTER" ]]; then
         # Substitute only explicitly declared variables
-        grep -E -v "(^#|$)" "$TARGET_FILE" | envsubst "$ENVSUBST_FILTER"
+        eval "$stripper" < "$TARGET_FILE" | envsubst "$ENVSUBST_FILTER"
     else
         # No variables declared, output raw file
-        grep -E -v "(^#|$)" "$TARGET_FILE"
+        eval "$stripper" < "$TARGET_FILE"
     fi
 
     # Reset tracking arrays for the next file in the loop
