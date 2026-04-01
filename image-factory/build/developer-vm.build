@@ -1,12 +1,28 @@
 #!/bin/bash
+# developer-vm.build
 
-IMAGE_PATH="$1"
+# Dynamic path configuration with optional overrides
+readonly SCRIPT_DIR="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"
+readonly CUSTOM_DIR="${CUSTOM_DIR:-${SCRIPT_DIR}/../bin}"
+readonly BIN_DIR="${BIN_DIR:-${SCRIPT_DIR}/../bin}"
+readonly LIB_DIR="${LIB_DIR:-${SCRIPT_DIR}/../lib}"
 
-based=$(basename "${0%.*}")
+if ! source "${LIB_DIR}/core.sh"; then
+    echo "CRITICAL FAILURE: Library ${LIB_DIR}/core.sh not found!" >&2
+    exit 1
+fi
 
-verbose="false"
-interactive="false"
-download="false"
+# Only for execution
+is_sourced && { echo "This script should be executed"; return 1; }
+
+readonly IMAGE_PATH="$1"
+readonly SCRIPT_NAME=$(basename "${0%.*}")
+
+# User-input variables' default values
+verbose=false
+interactive=false
+download=false
+dryrun=false
 output="developer-vm.image"
 
 usage() {
@@ -19,12 +35,13 @@ usage() {
     echo " -h        - Display this message."
 }
 
-while getopts "vido:" opt; do
+while getopts "vido:n" opt; do
 case ${opt} in
-    v) verbose="true" ;;
-    i) interactive="true" ;;
-    d) download="true" ;;
+    v) verbose=true ;;
+    i) interactive=true ;;
+    d) download=true ;;
     o) output="$OPTARG" ;;
+    n) dryrun=true ;;
     *) usage
        exit 1
        ;;
@@ -34,36 +51,21 @@ done
 shift $((OPTIND - 1))
 
 temporary() {
-    echo "/tmp/${based}-$(date +%H:%M:%S)"
+    local tempname="${$1:-${SCRIPT_NAME}}"
+    echo "/tmp/${$tempname}-$(date +%H:%M:%S)"
     return 0
 }
 
-log() {
-    if [[ "$verbose" == "true" ]]; then
-        echo "[Info]: $1" >&2
-    fi
-    return 0
-}
-
-error() {
-    echo "[Error]: $1"
-    exit 1
-}
-
-uerror() {
-    echo "[Error]: $1"
-    usage
-    exit 1
-}
 
 if [[ -z "${IMAGE_PATH}" ]]; then
-    uerror "Image path not provided"
+    error "Image path not provided"
 fi
 
 if [[ "$download" == "false" ]] && [[ ! -f "${IMAGE_PATH}" ]]; then
-	uerror "Image not found locally."
+	error "Image not found locally."
 fi
 
+# TODO: Rethink interactive approach.
 if [[ "$interactive" == "true" ]]; then
     readarray -d '' images < <(find /tmp -name developer-vm*.qcow2 -print0)
     if [[ -n "$images" ]]; then
@@ -71,7 +73,7 @@ if [[ "$interactive" == "true" ]]; then
         echo "Would you like to use one of them?"
         select img in "${images[@]}" "No"; do
             if [[ -f "$img" ]]; then
-                IMAGE_PATH="$img"
+                output="$img"
                 DOWNLOAD="no"
             elif [[ "$img" != "No" ]]; then
                 echo "Wrong choice. Continuing with IMAGE_PATH=${IMAGE_PATH}"
@@ -83,8 +85,8 @@ fi
 
 shift
 
-CUSTOMIZE_DIR="../customizations"
-LOADER="../bin/load-customize"
+
+LOADER="${BIN_DIR}/load-customize"
 CUSTOMIZATIONS=(
 	apt-proxy base-os
 	dev-tools net-tools
@@ -95,14 +97,13 @@ CUSTOMIZATIONS=(
 	template-cleanup
 )
 
-commands=$(${LOADER} "${CUSTOMIZATIONS[@]/*/${CUSTOMIZE_DIR}\/&.customize}")
+commands=$(${LOADER} "${CUSTOMIZATIONS[@]/*/${CUSTOM_DIR}\/&.customize}")
 [[ "$?" -eq "0" ]] || exit 1;
 
-log "Loading sucessfull!"
-#log "Loaded customizations: ${CUSTOMIZATIONS[*]}"
+vmsg $verbose "Loading sucessfull!"
 
 if [[ "$download" == "yes" ]]; then
-	log "Preparing the download of the image file..."
+	vmsg $verbose "Preparing the download of the image file..."
 	TMP_IMAGE_PATH="$(temporary).image"
 	wget -q --show-progress --progress=bar:force -O "${TMP_IMAGE_PATH}" "${IMAGE_PATH}"
 
@@ -111,19 +112,19 @@ if [[ "$download" == "yes" ]]; then
         error "There was an error downloading your image."
     fi
 
-    log "Resizing image..."
+    vmsg $verbose "Resizing image..."
     qemu-img create -f qcow2 -o preallocation=metadata "$output" 10G
 
     # TODO: Automate the disk selection in the future
     #       - /dev/sda1 works for debian-cloud-generic
     virt-resize --expand /dev/sda1 "${TMP_IMAGE_PATH}" "$output"
     rm "${TMP_IMAGE_PATH}"
-	log "Image available at $output."
+	vmsg $verbose "Image available at $output."
 fi
 
 # Form now on the $output variable contains the path to the image file
 
-log "The image will be customized with the following additional flags: ${*}"
+vmsg $verbose "The image will be customized with the following additional flags: ${*}"
 if [[ "$interactive" == "true" ]]; then
     echo "----------------------------"
     echo "Would you like to continue?"
@@ -135,9 +136,9 @@ if [[ "$interactive" == "true" ]]; then
     done
     echo "----------------------------"
 fi
-log "Customizing image..."
+vmsg $verbose "Customizing image..."
 
 export LIBGUESTFS_BACKEND=direct
 virt-customize -a "$output" --commands-from-file <( echo "$commands" ) "${@}"
 
-log "Freshly built image available at $output."
+vmsg $verbose "Freshly built image available at $output."
