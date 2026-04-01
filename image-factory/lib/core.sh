@@ -41,8 +41,52 @@ error() {
 }
 
 # Variable guarded non-critical messages
-vmsg()   { [[ "$1" == true ]] && msg "${*:2}"; }
-vwarn()  { [[ "$1" == true ]] && warn "${*:2}"; }
+vmsg()   { [[ "$1" == true ]] && msg "${@:2}"; }
+vwarn()  { [[ "$1" == true ]] && warn "${@:2}"; }
+
+# Command execution comined with messaging via first parameter
+# example: echoexec echo command arg1 arg2
+echoexec() {
+    local printer="$1"
+    local execargs="${@:2}"
+    $printer "$execargs" && $execargs
+}
+
+# Variable guarded command execution
+# example: vexec $dryrun command arg1 arg2
+vexec() { [[ "$1" == true ]] || ${@:2}; }
+
+# Variable guarded command execution with persistent messaging via first parameter
+# example: echovexec echo $dryrun command arg1 arg2
+echovexec() {
+    local printer="$1"
+    local execguard="$2"
+    local execargs="${@:3}"
+    $printer "$execargs"
+    [[ "$execguard" == true ]] || $execargs
+}
+
+# Command execution with variable guarded messaging via first parameter
+# example: vechoexec $verbose echo command arg1 arg2
+vechoexec() {
+    local echoguard="$1"
+    local printer="$2"
+    local execargs="${@:3}"
+    [[ "$echoguard" == true ]] || $printer "$execargs"
+    $execargs
+}
+
+# Variable guarded command execution with variable guarded messaging via first parameter
+# example: vechoexec $verbose echo $dryrun command arg1 arg2
+vechovexec() {
+    local echoguard="$1"
+    local printer="$2"
+    local execguard="$3"
+    local execargs="${@:4}"
+    [[ "$echoguard" == true ]] || $printer "$execargs"
+    [[ "$execguard" == true ]] || $execargs
+}
+
 
 # Privilege guard - when operations require root access
 check_root() {
